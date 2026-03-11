@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "legacy-shift"
+version = "0.1.0"
+description = "AI-powered legacy code migration tool — explains, tests, and rewrites old code safely."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [{name = "LegacyShift Team"}]
+
+dependencies = [
+    "langgraph>=0.2",
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-community>=0.3",
+    "litellm>=1.40",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "click>=8.1",
+    "rich>=13.7",
+    "tree-sitter>=0.23",
+    "tree-sitter-java>=0.23",
+    "pgvector>=0.3",
+    "psycopg[binary]>=3.2",
+    "sqlalchemy>=2.0",
+    "opentelemetry-api>=1.25",
+    "opentelemetry-sdk>=1.25",
+    "arize-phoenix[evals]>=4.0",
+    "python-dotenv>=1.0",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+legacy-shift = "legacy_shift.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["legacy_shift*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
