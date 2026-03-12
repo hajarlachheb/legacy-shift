@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import tree_sitter_java as tsjava
 from tree_sitter import Language, Parser
 
+from legacy_shift.errors import ParseError
 
 JAVA_LANGUAGE = Language(tsjava.language())
 
@@ -71,6 +72,8 @@ class JavaParser:
     def parse(self, source: str) -> ParsedCode:
         tree = self.parser.parse(bytes(source, "utf-8"))
         root = tree.root_node
+        if self._tree_has_errors(root):
+            raise ParseError("Java source has syntax errors or could not be parsed.")
         result = ParsedCode(raw_source=source)
 
         for child in root.children:
@@ -152,3 +155,15 @@ class JavaParser:
     @staticmethod
     def _node_text(node, source: str) -> str:
         return source[node.start_byte : node.end_byte]
+
+    @staticmethod
+    def _tree_has_errors(node) -> bool:
+        """Return True if the tree contains any ERROR or MISSING nodes."""
+        if node.type in ("ERROR", "MISSING"):
+            return True
+        if getattr(node, "has_error", False):
+            return True
+        for i in range(node.child_count):
+            if JavaParser._tree_has_errors(node.child(i)):
+                return True
+        return False

@@ -144,6 +144,17 @@ curl -X POST http://localhost:8000/migrate \
 EOF
 ```
 
+Interactive API docs (OpenAPI) are at **http://localhost:8000/docs** when the server is running.
+
+---
+
+## Limitations
+
+- **Source language:** Parser and prompts target Java 8. Multi-file or multi-class projects need to be migrated one class/file at a time.
+- **Human review:** Output is AI-generated. “Partial” status means tests did not all pass; always review and test translated code before production use.
+- **Scope:** Very large files may hit timeouts or token limits; consider splitting or setting `MIGRATION_TIMEOUT_SECONDS` and `MAX_SOURCE_CODE_CHARS` in `.env`.
+- **Pattern store:** Few-shot learning and pattern storage require Postgres + pgvector and (for embeddings) `OPENAI_API_KEY`. Without them, translations still run but do not improve from past runs.
+
 ---
 
 ## Project Structure

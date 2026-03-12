@@ -53,12 +53,17 @@ def run_tests_node(state: MigrationState) -> dict:
                 "status": "success",
             }
 
+        # Keep last 80 lines so the LLM sees the first failure and stack trace
+        error_lines = output.strip().split("\n")
+        truncated = "\n".join(error_lines[-80:]) if len(error_lines) > 80 else output
+        if len(truncated) > 4000:
+            truncated = truncated[-4000:]
         logger.warning(
             "Tests failed on iteration %d:\n%s",
             state.get("iteration", 0),
-            output[-2000:],
+            truncated[-1500:],
         )
         return {
             "test_passed": False,
-            "test_errors": output[-3000:],
+            "test_errors": truncated,
         }

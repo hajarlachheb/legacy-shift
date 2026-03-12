@@ -38,6 +38,16 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     max_retries: int = 3
 
+    # API limits and timeouts
+    max_source_code_chars: int = 200_000
+    migration_timeout_seconds: int = 600
+
+    # CORS (comma-separated origins, or "*" for allow all)
+    cors_origins: str = "*"
+
+    # Rate limit: requests per minute per IP for /migrate and /explain (0 = disabled)
+    rate_limit_per_minute: int = 0
+
     @property
     def postgres_dsn(self) -> str:
         return (

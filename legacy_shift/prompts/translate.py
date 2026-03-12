@@ -14,6 +14,7 @@ TRANSLATE_PROMPT = ChatPromptTemplate.from_messages(
             "## Original Java Source\n```java\n{source_code}\n```\n\n"
             "## Plain-English Explanation\n{explanation}\n\n"
             "## Structural Summary\n{structure_summary}\n\n"
+            "{few_shot_section}"
             "{feedback_section}"
             "Translate the Java code into a single Python module. Rules:\n"
             "- Preserve ALL public method signatures (Pythonised names: camelCase → snake_case).\n"

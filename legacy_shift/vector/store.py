@@ -11,8 +11,8 @@ import logging
 from typing import Sequence
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, Integer, String, Text, create_engine, select
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy import Column, Integer, String, Text, create_engine, func, select, text
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from legacy_shift.config import get_settings
 
@@ -48,11 +48,8 @@ class PatternStore:
     def init_db(self) -> None:
         """Create the table + pgvector extension if they don't exist."""
         with self.engine.connect() as conn:
-            conn.execute(select(1))  # verify connectivity
-            conn.execute(
-                # idempotent
-                __import__("sqlalchemy").text("CREATE EXTENSION IF NOT EXISTS vector")
-            )
+            conn.execute(text("SELECT 1"))
+            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
             conn.commit()
         Base.metadata.create_all(self.engine)
         logger.info("PatternStore database initialised.")
@@ -99,4 +96,4 @@ class PatternStore:
 
     def count(self) -> int:
         with self._session_factory() as session:
-            return session.query(CodePattern).count()
+            return int(session.scalars(select(func.count()).select_from(CodePattern)).one())

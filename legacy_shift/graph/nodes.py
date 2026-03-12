@@ -57,6 +57,29 @@ def test_gen_node(state: MigrationState) -> dict:
 
 # ── Node 3: Translate ────────────────────────────────────────────────────────
 
+def _get_few_shot_section(source_code: str, source_lang: str = "java", target_lang: str = "python") -> str:
+    """If PatternStore + embeddings are available, return a few-shot section from similar patterns."""
+    try:
+        from legacy_shift.embeddings import get_embedding
+        from legacy_shift.vector.store import PatternStore
+
+        emb = get_embedding(source_code)
+        if not emb:
+            return ""
+        store = PatternStore()
+        store.init_db()
+        patterns = store.search_similar(emb, source_language=source_lang, target_language=target_lang, limit=3)
+        if not patterns:
+            return ""
+        parts = ["## Similar past translations (use as style reference)\n\n"]
+        for p in patterns:
+            parts.append(f"Java:\n```java\n{p.source_snippet[:1200]}\n```\n\nPython:\n```python\n{p.target_snippet[:1200]}\n```\n\n")
+        return "".join(parts)
+    except Exception as e:
+        logger.debug("Few-shot lookup skipped: %s", e)
+        return ""
+
+
 def translate_node(state: MigrationState) -> dict:
     """Translate the legacy code into the target language."""
     llm = get_llm()
@@ -70,11 +93,18 @@ def translate_node(state: MigrationState) -> dict:
             test_errors=state["test_errors"],
         )
 
+    few_shot_section = _get_few_shot_section(
+        state["source_code"],
+        state.get("source_language", "java"),
+        state.get("target_language", "python"),
+    )
+
     result = chain.invoke(
         {
             "source_code": state["source_code"],
             "explanation": state["explanation"],
             "structure_summary": state.get("structure_summary", ""),
+            "few_shot_section": few_shot_section,
             "feedback_section": feedback_section,
         }
     )
