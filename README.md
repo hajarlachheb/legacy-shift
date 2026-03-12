@@ -6,6 +6,45 @@ Banks and insurers run on millions of lines of legacy Java (and COBOL). Nobody w
 
 ---
 
+## Product overview
+
+### Problem
+
+- **Legacy code is a liability.** Large codebases in Java and COBOL are hard to understand, risky to change, and expensive to maintain. Teams lack visibility into what code does and fear regressions.
+- **Manual migration is slow and error-prone.** Rewriting by hand doesn’t scale; ad-hoc scripts or one-off LLM use lack a repeatable, test-driven process and leave no audit trail.
+- **Stakeholders need assurance.** Risk, compliance, and engineering leads need evidence that behaviour is preserved and that migrations can be reviewed and measured.
+
+### Who it’s for
+
+| Persona | Use case |
+|--------|----------|
+| **Platform / engineering leads** | Assess and pilot legacy modernisation; get explainability and quality metrics before committing to large migrations. |
+| **Developers** | Understand unfamiliar code (Explain), generate tests and Python translations (Migrate), and iterate with a safety net. |
+| **Risk / compliance** | See plain-English explanations and test-first design; use quality stats and run history as evidence of controlled change. |
+
+### Value
+
+- **Safety first:** Tests are generated *before* translation; the pipeline only succeeds when those tests pass (or surfaces “partial” for review).
+- **Explainability:** Every migration is explained in plain English, so behaviour is documented and reviewable.
+- **Measurability:** Quality score, success rate, and run history (`/stats`, `/migrations`) support prioritisation and reporting.
+- **Flexibility:** Works with Java and COBOL; supports OpenAI, Azure OpenAI, or free local models (Ollama). No vendor lock-in.
+
+### Problematic — risks and limitations
+
+- **Output is not production-ready by default.** All translations are AI-generated and must be reviewed and tested in your environment. “Partial” means tests did not all pass; treat it as a draft, not a release.
+- **Single-file / single-unit scope.** The tool operates on one source file or program at a time. Multi-file or multi-module projects need to be broken down and migrated incrementally.
+- **Language and size limits.** Java 8 and COBOL are supported; very large files can hit timeouts or token limits. Parsing is best-effort for COBOL (regex-based); complex or non-standard dialects may not parse correctly.
+- **Dependencies.** Full quality tracking and few-shot learning need Postgres + pgvector and (for embeddings) an API key. Without them, the tool still runs but does not persist history or improve from past runs.
+- **Cost and rate limits.** LLM calls cost money and may be rate-limited. Use the free Ollama path for demos; set `RATE_LIMIT_PER_MINUTE` and timeouts for shared deployments.
+
+### How we measure success
+
+- **Per run:** `status` (success / partial / failed), `test_passed`, `iterations`, and `quality_score` (0–1) indicate whether the migration met the bar and how many retries were needed.
+- **Over time:** `GET /stats` gives success rate, average iterations, and average quality score so you can track pipeline health and prioritise problematic modules.
+- **Human-in-the-loop:** The design assumes human review before production. Success is “safe, explainable, and measurable,” not “fully automated deployment.”
+
+---
+
 ## Demo
 
 The web UI lets you paste Java code, **parse** its structure, **explain** it in plain English, **generate tests**, and **translate** to Python — all in one place.
@@ -146,14 +185,23 @@ EOF
 
 Interactive API docs (OpenAPI) are at **http://localhost:8000/docs** when the server is running.
 
+### Quality tracking
+
+Each migration run is recorded in a local SQLite DB (`data/migration_runs.db`). You can:
+
+- **GET /stats?days=30** — success rate, total runs, average iterations, average quality score (0–1).
+- **GET /migrations?limit=50** — recent runs with status, iterations, duration, quality score.
+
+The **quality score** is derived from status (success/partial/failed) and number of translate retries; it is returned in each migrate response as `quality_score`.
+
 ---
 
-## Limitations
+## Limitations (technical)
 
-- **Source language:** Parser and prompts target Java 8. Multi-file or multi-class projects need to be migrated one class/file at a time.
-- **Human review:** Output is AI-generated. “Partial” status means tests did not all pass; always review and test translated code before production use.
-- **Scope:** Very large files may hit timeouts or token limits; consider splitting or setting `MIGRATION_TIMEOUT_SECONDS` and `MAX_SOURCE_CODE_CHARS` in `.env`.
-- **Pattern store:** Few-shot learning and pattern storage require Postgres + pgvector and (for embeddings) `OPENAI_API_KEY`. Without them, translations still run but do not improve from past runs.
+- **Scope:** One file or program per run. Very large files may hit timeouts or token limits; use `MIGRATION_TIMEOUT_SECONDS` and `MAX_SOURCE_CODE_CHARS` in `.env` or split input.
+- **Languages:** Java 8 (full AST) and COBOL (regex-based structure). Other languages require adding a parser and prompts.
+- **Pattern store:** Few-shot learning and pattern storage require Postgres + pgvector and (for embeddings) `OPENAI_API_KEY`. Optional; translations work without them.
+- See **Problematic — risks and limitations** above for product-level caveats.
 
 ---
 
@@ -210,11 +258,16 @@ The test suite covers:
 
 ## Extending
 
-### Add a new source language
+### Supported source languages
 
-1. Install the Tree-sitter grammar (`tree-sitter-cobol`, etc.)
-2. Create a new parser class in `legacy_shift/parser/`
-3. Add language-specific prompt templates in `legacy_shift/prompts/`
+- **Java** — full Tree-sitter parsing; use `source_language: "java"` or `.java` files in CLI.
+- **COBOL** — regex-based structure extraction (PROGRAM-ID, paragraphs, sections); use `source_language: "cobol"` or `.cbl`/`.cob` files in CLI. Example: `examples/HelloCalc.cbl`.
+
+### Add another source language
+
+1. Add a parser in `legacy_shift/parser/` with a `parse(source) -> result` and `result.summary()`.
+2. Register it in `parser_factory.get_parser(source_language)`.
+3. Add language-specific prompts in `legacy_shift/prompts/` and select them in `graph/nodes.py` by `source_language`.
 
 ### Add a new target language
 

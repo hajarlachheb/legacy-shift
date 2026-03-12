@@ -149,7 +149,14 @@ textarea#code-input::placeholder{color:var(--fg3)}
   <!-- ── Left: Code Input ──────────────────────── -->
   <div class="panel left-panel">
     <div class="panel-header">
-      <div class="panel-title">Java Source</div>
+      <div class="panel-title">Source</div>
+      <label style="display:flex;align-items:center;gap:.4rem;font-size:.78rem;color:var(--fg2);">
+        Language:
+        <select id="source-language" style="background:var(--bg4);color:var(--fg);border:1px solid var(--border);border-radius:4px;padding:.25rem .5rem;">
+          <option value="java">Java</option>
+          <option value="cobol">COBOL</option>
+        </select>
+      </label>
       <div class="spacer" style="flex:1"></div>
       <button class="btn btn-secondary" onclick="loadExample()" title="Load example">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
@@ -157,7 +164,7 @@ textarea#code-input::placeholder{color:var(--fg3)}
       </button>
     </div>
     <div class="panel-body">
-      <textarea id="code-input" placeholder="Paste your Java code here..." spellcheck="false"></textarea>
+      <textarea id="code-input" placeholder="Paste Java or COBOL code here..." spellcheck="false"></textarea>
     </div>
     <div class="action-bar">
       <button class="btn btn-secondary" onclick="runParse()" id="btn-parse">
@@ -312,8 +319,26 @@ public class BankAccount {
     }
 }`;
 
+const EXAMPLE_COBOL = `       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HELLOCALC.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  A PIC 99 VALUE 0.
+       01  B PIC 99 VALUE 0.
+       01  RESULT PIC 999 VALUE 0.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           MOVE 10 TO A
+           MOVE 20 TO B
+           PERFORM ADD-PARA
+           DISPLAY "Result: " RESULT
+           STOP RUN.
+       ADD-PARA.
+           COMPUTE RESULT = A + B.`;
+
 function loadExample() {
-  document.getElementById('code-input').value = EXAMPLE;
+  const lang = document.getElementById('source-language').value;
+  document.getElementById('code-input').value = lang === 'cobol' ? EXAMPLE_COBOL : EXAMPLE;
 }
 
 function switchTab(name) {
@@ -334,7 +359,7 @@ function setButtons(disabled) {
 
 function getCode() {
   const code = document.getElementById('code-input').value.trim();
-  if (!code) { showError('Please paste some Java code first.'); return null; }
+  if (!code) { showError('Please paste some source code first.'); return null; }
   return code;
 }
 
@@ -386,9 +411,10 @@ async function runParse() {
   showLoader('Parsing...');
   setButtons(true);
   try {
+    const srcLang = document.getElementById('source-language').value;
     const res = await fetch(API + '/parse', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ source_code: code })
+      body: JSON.stringify({ source_code: code, source_language: srcLang })
     });
     let errBody = {};
     try { errBody = await res.json(); } catch (_) {}
@@ -420,9 +446,10 @@ async function runExplain() {
   showLoader('Explaining code (LLM)...');
   setButtons(true);
   try {
+    const srcLang = document.getElementById('source-language').value;
     const res = await fetch(API + '/explain', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ source_code: code })
+      body: JSON.stringify({ source_code: code, source_language: srcLang })
     });
     let errBody = {};
     try { errBody = await res.json(); } catch (_) {}
@@ -464,9 +491,10 @@ async function runMigrate() {
   setButtons(true);
   const maxRetries = parseInt(document.getElementById('max-retries').value, 10) || 3;
   try {
+    const srcLang = document.getElementById('source-language').value;
     const res = await fetch(API + '/migrate', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ source_code: code, max_retries: maxRetries })
+      body: JSON.stringify({ source_code: code, source_language: srcLang, max_retries: maxRetries })
     });
     let errBody = {};
     try { errBody = await res.json(); } catch (_) {}
@@ -475,6 +503,7 @@ async function runMigrate() {
 
     const statusCls = d.status === 'success' ? 'success' : d.status === 'partial' ? 'partial' : 'failed';
     const statusIcon = d.test_passed ? '&#10003;' : '&#10007;';
+    const qualityLabel = (d.quality_score != null) ? ` &middot; Quality: ${(d.quality_score * 100).toFixed(0)}%` : '';
 
     // Explain tab
     document.getElementById('explain-empty').style.display = 'none';
@@ -487,7 +516,7 @@ async function runMigrate() {
     const testsEl = document.getElementById('tests-result');
     testsEl.style.display = 'block';
     testsEl.innerHTML = `
-      <div class="status ${statusCls}">${statusIcon} Tests ${d.test_passed ? 'Passed' : 'Failed'} &middot; ${d.iterations} iteration${d.iterations !== 1 ? 's' : ''}</div>
+      <div class="status ${statusCls}">${statusIcon} Tests ${d.test_passed ? 'Passed' : 'Failed'} &middot; ${d.iterations} iteration${d.iterations !== 1 ? 's' : ''}${qualityLabel}</div>
       <div class="label">Generated Test Suite</div>
       <div class="code-block"><pre>${escapeHtml(d.test_code)}</pre></div>
       ${d.test_errors ? `<div class="label">Test Output</div><div class="code-block"><pre>${escapeHtml(d.test_errors)}</pre></div>` : ''}
@@ -498,7 +527,7 @@ async function runMigrate() {
     const transEl = document.getElementById('translated-result');
     transEl.style.display = 'block';
     transEl.innerHTML = `
-      <div class="status ${statusCls}">${statusIcon} ${d.status.charAt(0).toUpperCase() + d.status.slice(1)}</div>
+      <div class="status ${statusCls}">${statusIcon} ${d.status.charAt(0).toUpperCase() + d.status.slice(1)}${qualityLabel}</div>
       <div class="label">Python Translation</div>
       <div class="code-block"><pre>${escapeHtml(d.translated_code)}</pre></div>
     `;

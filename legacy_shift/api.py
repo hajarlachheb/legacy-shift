@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -19,9 +20,12 @@ from pydantic import BaseModel, Field, field_validator
 
 from legacy_shift.config import get_settings
 from legacy_shift.errors import LegacyShiftError, ParseError, RateLimitExceededError, TimeoutError
+from legacy_shift.parser import SUPPORTED_SOURCE_LANGUAGES
 from legacy_shift.rate_limit import is_rate_limited, record_request
 from legacy_shift.graph.workflow import build_graph
-from legacy_shift.parser.ast_parser import JavaParser
+from legacy_shift.parser import get_parser
+from legacy_shift.parser.ast_parser import ParsedCode
+from legacy_shift.parser.cobol_parser import CobolParsedCode
 from legacy_shift.tracing.observability import init_tracing
 
 logger = logging.getLogger(__name__)
@@ -67,6 +71,14 @@ def legacy_shift_error_handler(_request: Request, exc: LegacyShiftError) -> JSON
     )
 
 
+@app.exception_handler(ValueError)
+def value_error_handler(_request: Request, exc: ValueError) -> JSONResponse:
+    msg = str(exc)
+    if "Unsupported source language" in msg:
+        return JSONResponse(status_code=400, content={"error": msg, "code": "unsupported_language"})
+    return JSONResponse(status_code=400, content={"error": msg, "code": "bad_request"})
+
+
 # ── Request / Response models ─────────────────────────────────────────────────
 
 
@@ -97,6 +109,7 @@ class MigrateResponse(BaseModel):
     iterations: int
     test_passed: bool
     test_errors: str
+    quality_score: float = 0.0
 
 
 class ExplainRequest(BaseModel):
@@ -116,6 +129,7 @@ class ExplainResponse(BaseModel):
 
 class ParseRequest(BaseModel):
     source_code: str
+    source_language: str = "java"
 
     @field_validator("source_code")
     @classmethod
@@ -134,9 +148,29 @@ class ParseResponse(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
+def _parsed_to_parse_response(parsed: ParsedCode | CobolParsedCode, source_language: str) -> ParseResponse:
+    """Build ParseResponse from any parser result."""
+    summary = parsed.summary()
+    if source_language.strip().lower() == "cobol":
+        return ParseResponse(
+            summary=summary,
+            package=getattr(parsed, "program_id", None),
+            imports=[],
+            class_count=getattr(parsed, "class_count", 0),
+            method_count=getattr(parsed, "method_count", 0),
+        )
+    return ParseResponse(
+        summary=summary,
+        package=parsed.package,
+        imports=parsed.imports,
+        class_count=len(parsed.classes),
+        method_count=sum(len(c.methods) for c in parsed.classes),
+    )
+
+
 def _run_migrate_sync(req: MigrateRequest) -> MigrateResponse:
     """Synchronous migration (run in thread pool)."""
-    parser = JavaParser()
+    parser = get_parser(req.source_language)
     parsed = parser.parse(req.source_code)
 
     graph = build_graph()
@@ -151,14 +185,21 @@ def _run_migrate_sync(req: MigrateRequest) -> MigrateResponse:
 
     final = graph.invoke(initial_state)
 
+    from legacy_shift.quality.store import quality_score
+
+    status = final.get("status", "unknown")
+    iterations = final.get("iteration", 0)
+    test_passed = final.get("test_passed", False)
+
     return MigrateResponse(
-        status=final.get("status", "unknown"),
+        status=status,
         explanation=final.get("explanation", ""),
         test_code=final.get("test_code", ""),
         translated_code=final.get("translated_code", ""),
-        iterations=final.get("iteration", 0),
-        test_passed=final.get("test_passed", False),
+        iterations=iterations,
+        test_passed=test_passed,
         test_errors=final.get("test_errors", ""),
+        quality_score=round(quality_score(status, iterations, test_passed), 4),
     )
 
 
@@ -166,7 +207,7 @@ def _run_explain_sync(req: ExplainRequest) -> ExplainResponse:
     """Synchronous explain (run in thread pool)."""
     from legacy_shift.graph.nodes import explain_node
 
-    parser = JavaParser()
+    parser = get_parser(req.source_language)
     parsed = parser.parse(req.source_code)
 
     state = {
@@ -195,11 +236,28 @@ async def migrate(request: Request, req: MigrateRequest) -> MigrateResponse:
     record_request(ip, settings.rate_limit_per_minute)
 
     timeout_sec = settings.migration_timeout_seconds
+    start = time.perf_counter()
     try:
         result = await asyncio.wait_for(
             asyncio.to_thread(_run_migrate_sync, req),
             timeout=timeout_sec,
         )
+        duration_ms = int((time.perf_counter() - start) * 1000)
+        try:
+            from legacy_shift.quality.store import MigrationRunStore
+
+            store = MigrationRunStore()
+            store.record(
+                source_language=req.source_language,
+                target_language=req.target_language,
+                status=result.status,
+                test_passed=result.test_passed,
+                iterations=result.iterations,
+                duration_ms=duration_ms,
+                source_len=len(req.source_code),
+            )
+        except Exception as e:
+            logger.warning("Could not record migration run: %s", e)
         return result
     except asyncio.TimeoutError:
         raise TimeoutError(
@@ -262,24 +320,44 @@ async def explain(request: Request, req: ExplainRequest) -> ExplainResponse:
 
 @app.post("/parse", response_model=ParseResponse)
 def parse(req: ParseRequest) -> ParseResponse:
-    """Parse Java source and return structural summary (no LLM call)."""
+    """Parse source and return structural summary (no LLM). Supports java and cobol."""
     try:
-        parser = JavaParser()
+        parser = get_parser(req.source_language)
         parsed = parser.parse(req.source_code)
     except ParseError:
         raise
-    return ParseResponse(
-        summary=parsed.summary(),
-        package=parsed.package,
-        imports=parsed.imports,
-        class_count=len(parsed.classes),
-        method_count=sum(len(c.methods) for c in parsed.classes),
-    )
+    return _parsed_to_parse_response(parsed, req.source_language)
 
 
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok", "version": "0.1.0"}
+
+
+@app.get("/stats")
+def stats(days: int = 30) -> dict:
+    """Return migration quality stats (success rate, avg iterations, avg quality score)."""
+    try:
+        from legacy_shift.quality.store import MigrationRunStore
+
+        store = MigrationRunStore()
+        return store.get_stats(limit_days=days if days > 0 else None)
+    except Exception as e:
+        logger.warning("Stats failed: %s", e)
+        return {"total_runs": 0, "success_count": 0, "success_rate": 0.0, "avg_iterations": 0.0, "avg_quality_score": 0.0}
+
+
+@app.get("/migrations")
+def migrations(limit: int = 50) -> dict:
+    """Return recent migration runs (history)."""
+    try:
+        from legacy_shift.quality.store import MigrationRunStore
+
+        store = MigrationRunStore()
+        return {"runs": store.get_recent(limit=min(limit, 100))}
+    except Exception as e:
+        logger.warning("Migrations list failed: %s", e)
+        return {"runs": []}
 
 
 @app.get("/")

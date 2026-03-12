@@ -6,7 +6,14 @@ import logging
 import re
 
 from legacy_shift.graph.state import MigrationState
-from legacy_shift.prompts import EXPLAIN_PROMPT, TEST_GEN_PROMPT, TRANSLATE_PROMPT
+from legacy_shift.prompts import (
+    EXPLAIN_PROMPT,
+    EXPLAIN_COBOL_PROMPT,
+    TEST_GEN_PROMPT,
+    TEST_GEN_COBOL_PROMPT,
+    TRANSLATE_PROMPT,
+    TRANSLATE_COBOL_PROMPT,
+)
 from legacy_shift.prompts.translate import TRANSLATE_FEEDBACK_SECTION
 from legacy_shift.tracing.observability import get_llm
 
@@ -24,7 +31,9 @@ def _extract_code_block(text: str) -> str:
 def explain_node(state: MigrationState) -> dict:
     """Ask the LLM to explain the legacy source code in plain English."""
     llm = get_llm()
-    chain = EXPLAIN_PROMPT | llm
+    src_lang = (state.get("source_language") or "java").strip().lower()
+    prompt = EXPLAIN_COBOL_PROMPT if src_lang == "cobol" else EXPLAIN_PROMPT
+    chain = prompt | llm
     result = chain.invoke(
         {
             "source_code": state["source_code"],
@@ -41,7 +50,9 @@ def explain_node(state: MigrationState) -> dict:
 def test_gen_node(state: MigrationState) -> dict:
     """Generate a pytest suite that will verify the translated code."""
     llm = get_llm()
-    chain = TEST_GEN_PROMPT | llm
+    src_lang = (state.get("source_language") or "java").strip().lower()
+    prompt = TEST_GEN_COBOL_PROMPT if src_lang == "cobol" else TEST_GEN_PROMPT
+    chain = prompt | llm
     result = chain.invoke(
         {
             "source_code": state["source_code"],
@@ -71,9 +82,11 @@ def _get_few_shot_section(source_code: str, source_lang: str = "java", target_la
         patterns = store.search_similar(emb, source_language=source_lang, target_language=target_lang, limit=3)
         if not patterns:
             return ""
+        lang_label = "COBOL" if source_lang == "cobol" else "Java"
+        fence = "cobol" if source_lang == "cobol" else "java"
         parts = ["## Similar past translations (use as style reference)\n\n"]
         for p in patterns:
-            parts.append(f"Java:\n```java\n{p.source_snippet[:1200]}\n```\n\nPython:\n```python\n{p.target_snippet[:1200]}\n```\n\n")
+            parts.append(f"{lang_label}:\n```{fence}\n{p.source_snippet[:1200]}\n```\n\nPython:\n```python\n{p.target_snippet[:1200]}\n```\n\n")
         return "".join(parts)
     except Exception as e:
         logger.debug("Few-shot lookup skipped: %s", e)
@@ -83,7 +96,9 @@ def _get_few_shot_section(source_code: str, source_lang: str = "java", target_la
 def translate_node(state: MigrationState) -> dict:
     """Translate the legacy code into the target language."""
     llm = get_llm()
-    chain = TRANSLATE_PROMPT | llm
+    src_lang = (state.get("source_language") or "java").strip().lower()
+    prompt = TRANSLATE_COBOL_PROMPT if src_lang == "cobol" else TRANSLATE_PROMPT
+    chain = prompt | llm
 
     iteration = state.get("iteration", 0)
     feedback_section = ""

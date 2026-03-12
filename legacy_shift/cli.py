@@ -22,8 +22,18 @@ from rich.syntax import Syntax
 from legacy_shift import __version__
 from legacy_shift.config import get_settings
 from legacy_shift.graph.workflow import build_graph
-from legacy_shift.parser.ast_parser import JavaParser
+from legacy_shift.parser import get_parser
+from legacy_shift.parser.ast_parser import ParsedCode
+from legacy_shift.parser.cobol_parser import CobolParsedCode
 from legacy_shift.tracing.observability import init_tracing
+
+
+def _source_language_from_path(path: str) -> str:
+    """Infer source language from file extension."""
+    suf = Path(path).suffix.lower()
+    if suf in (".cbl", ".cob"):
+        return "cobol"
+    return "java"
 
 console = Console()
 
@@ -71,16 +81,21 @@ def migrate(
     source = _read_source(source_file)
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
+    src_lang = _source_language_from_path(source_file)
 
     console.print(Panel("[bold cyan]LegacyShift Migration Pipeline[/bold cyan]", expand=False))
 
     # Parse
-    with console.status("[bold green]Parsing Java source with Tree-sitter..."):
-        parser = JavaParser()
+    with console.status(f"[bold green]Parsing {src_lang} source..."):
+        parser = get_parser(src_lang)
         parsed = parser.parse(source)
 
-    console.print(f"  [dim]Parsed {len(parsed.classes)} class(es), "
-                  f"{sum(len(c.methods) for c in parsed.classes)} method(s)[/dim]")
+    if isinstance(parsed, CobolParsedCode):
+        console.print(f"  [dim]Parsed COBOL program {parsed.program_id or '?'}, "
+                      f"{parsed.method_count} paragraph(s)[/dim]")
+    else:
+        console.print(f"  [dim]Parsed {len(parsed.classes)} class(es), "
+                      f"{sum(len(c.methods) for c in parsed.classes)} method(s)[/dim]")
 
     # Build and invoke graph
     graph = build_graph()
@@ -88,7 +103,7 @@ def migrate(
 
     initial_state = {
         "source_code": source,
-        "source_language": "java",
+        "source_language": src_lang,
         "target_language": "python",
         "structure_summary": parsed.summary(),
         "iteration": 0,
@@ -144,21 +159,23 @@ def migrate(
 @click.option("--model", "-m", default=None, help="LLM model to use.")
 @click.option("--log-level", default=None, help="Log level.")
 def explain(source_file: str, model: str | None, log_level: str | None) -> None:
-    """Explain what a Java source file does in plain English."""
+    """Explain what a Java or COBOL source file does in plain English."""
     settings = get_settings()
     _setup_logging(log_level or settings.log_level)
     init_tracing()
 
     source = _read_source(source_file)
+    src_lang = _source_language_from_path(source_file)
 
     with console.status("[bold green]Parsing..."):
-        parser = JavaParser()
+        parser = get_parser(src_lang)
         parsed = parser.parse(source)
 
     from legacy_shift.graph.nodes import explain_node
 
     state = {
         "source_code": source,
+        "source_language": src_lang,
         "structure_summary": parsed.summary(),
     }
 
@@ -177,7 +194,7 @@ def explain(source_file: str, model: str | None, log_level: str | None) -> None:
 def generate_tests(
     source_file: str, output_dir: str, model: str | None, log_level: str | None
 ) -> None:
-    """Generate a pytest test suite for the Java source (without translating)."""
+    """Generate a pytest test suite for the Java or COBOL source (without translating)."""
     settings = get_settings()
     _setup_logging(log_level or settings.log_level)
     init_tracing()
@@ -185,15 +202,17 @@ def generate_tests(
     source = _read_source(source_file)
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
+    src_lang = _source_language_from_path(source_file)
 
     with console.status("[bold green]Parsing..."):
-        parser = JavaParser()
+        parser = get_parser(src_lang)
         parsed = parser.parse(source)
 
     from legacy_shift.graph.nodes import explain_node, test_gen_node
 
     state: dict = {
         "source_code": source,
+        "source_language": src_lang,
         "structure_summary": parsed.summary(),
     }
 

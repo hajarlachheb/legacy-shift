@@ -1,0 +1,17 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HELLOCALC.
+       AUTHOR. LEGACYSHIFT-EXAMPLE.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  A PIC 99 VALUE 0.
+       01  B PIC 99 VALUE 0.
+       01  RESULT PIC 999 VALUE 0.
+       PROCEDURE DIVISION.
+       MAIN-PARA.
+           MOVE 10 TO A
+           MOVE 20 TO B
+           PERFORM ADD-PARA
+           DISPLAY "Result: " RESULT
+           STOP RUN.
+       ADD-PARA.
+           COMPUTE RESULT = A + B.

@@ -27,6 +27,34 @@ TRANSLATE_PROMPT = ChatPromptTemplate.from_messages(
     ]
 )
 
+TRANSLATE_COBOL_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            "You are an expert polyglot programmer who translates legacy COBOL "
+            "code into clean, idiomatic Python 3.12+. You preserve exact business "
+            "logic — every branch, every calculation — while using Pythonic idioms "
+            "(functions, dataclasses, type hints, clear names). Map paragraphs to "
+            "functions, data items to variables or dataclass fields.",
+        ),
+        (
+            "human",
+            "## Original COBOL Source\n```cobol\n{source_code}\n```\n\n"
+            "## Plain-English Explanation\n{explanation}\n\n"
+            "## Structural Summary\n{structure_summary}\n\n"
+            "{few_shot_section}"
+            "{feedback_section}"
+            "Translate the COBOL program into a single Python module. Rules:\n"
+            "- Map paragraphs to functions (COBOL names can be snake_case).\n"
+            "- Preserve all business logic, calculations, and control flow.\n"
+            "- Use dataclasses or simple data structures for record-like data.\n"
+            "- Add Python type hints where appropriate.\n"
+            "- Do NOT add behaviour that isn't in the original code.\n\n"
+            "Return ONLY the Python code inside a single ```python``` block.",
+        ),
+    ]
+)
+
 TRANSLATE_FEEDBACK_SECTION = (
     "## Previous Translation Attempt\n```python\n{previous_translation}\n```\n\n"
     "## Test Failures From Previous Attempt\n```\n{test_errors}\n```\n\n"
