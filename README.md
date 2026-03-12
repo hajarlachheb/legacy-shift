@@ -6,6 +6,38 @@ Banks and insurers run on millions of lines of legacy Java (and COBOL). Nobody w
 
 ---
 
+## Demo
+
+The web UI lets you paste Java code, **parse** its structure, **explain** it in plain English, **generate tests**, and **translate** to Python — all in one place.
+
+Run the app with `uvicorn legacy_shift.api:app --host 0.0.0.0 --port 8000` and open **http://localhost:8000**.
+
+### Parse — structural summary (no LLM)
+
+Parse Java to see classes, methods, imports, and a structural summary.
+
+![Parse demo](docs/screenshots/demo-parse.png)
+
+### Explain — plain-English breakdown
+
+Get a plain-English explanation of what the code does and how it behaves.
+
+![Explain demo](docs/screenshots/demo-explain.png)
+
+### Tests — generated pytest suite
+
+Generate a pytest suite before translation; the pipeline retries until tests pass or max iterations.
+
+![Tests demo](docs/screenshots/demo-tests.png)
+
+### Translated — Java → Python
+
+Java is translated to Python with dataclasses, type hints, and preserved business logic.
+
+![Translated demo](docs/screenshots/demo-translated.png)
+
+---
+
 ## Architecture
 
 ```
@@ -51,8 +83,16 @@ Banks and insurers run on millions of lines of legacy Java (and COBOL). Nobody w
 ```bash
 git clone <repo-url> && cd legacy-shift
 cp .env.example .env
-# Edit .env — at minimum set OPENAI_API_KEY
+# Edit .env — set OPENAI_API_KEY (or Azure) for paid APIs, or use the free option below
 ```
+
+**Free local model (no API key):** To use a free model with no quota or billing, use [Ollama](https://ollama.com). Install Ollama, then in a terminal run:
+
+```bash
+ollama run llama3.2
+```
+
+Leave `OPENAI_API_KEY` and Azure keys empty in `.env`. The app will use `ollama/llama3.2` automatically. You can also set `DEFAULT_MODEL=ollama/llama3.2` and `OLLAMA_BASE_URL=http://localhost:11434` explicitly.
 
 ### 2a. Run with Docker (recommended)
 

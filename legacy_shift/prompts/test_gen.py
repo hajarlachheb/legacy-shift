@@ -1,4 +1,4 @@
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
 
 TEST_GEN_PROMPT = ChatPromptTemplate.from_messages(
     [

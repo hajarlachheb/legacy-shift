@@ -13,6 +13,15 @@ class Settings(BaseSettings):
     azure_api_base: str = ""
     default_model: str = "gpt-4o"
 
+    # Azure OpenAI
+    azure_openai_api_key: str = ""
+    azure_openai_endpoint: str = ""
+    azure_openai_deployment_id: str = ""
+    azure_openai_api_version: str = "2024-12-01-preview"
+
+    # Free local model (Ollama) — no API key, runs on your machine
+    ollama_base_url: str = "http://localhost:11434"
+
     # Postgres / pgvector
     postgres_host: str = "localhost"
     postgres_port: int = 5432

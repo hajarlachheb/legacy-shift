@@ -51,14 +51,44 @@ def init_tracing() -> None:
 
 
 def get_llm(model: str | None = None, temperature: float = 0.0):
-    """Return a LangChain chat model routed through LiteLLM.
+    """Return a LangChain chat model.
 
-    Uses `init_chat_model` which automatically delegates to the right
-    provider based on the model string (e.g. "gpt-4o", "claude-3-opus",
-    "azure/gpt-4o").  LiteLLM environment variables handle auth.
+    Priority: Azure OpenAI (if configured) → OpenAI/Anthropic (if keys set) → Ollama (free, local).
     """
     settings = get_settings()
+
+    if settings.azure_openai_api_key and settings.azure_openai_endpoint:
+        from langchain_openai import AzureChatOpenAI
+
+        return AzureChatOpenAI(
+            azure_endpoint=settings.azure_openai_endpoint,
+            api_key=settings.azure_openai_api_key,
+            azure_deployment=settings.azure_openai_deployment_id or settings.default_model,
+            api_version=settings.azure_openai_api_version,
+            temperature=temperature,
+        )
+
     model = model or settings.default_model
+
+    # Free path: use Ollama (local, no API key) when model is ollama/* or no paid keys set
+    use_ollama = model.lower().startswith("ollama/") or (
+        not settings.openai_api_key
+        and not settings.anthropic_api_key
+        and (not model or model == "gpt-4o")
+    )
+    if use_ollama:
+        if model.lower().startswith("ollama/"):
+            ollama_model = model.split("/", 1)[1].strip() or "llama3.2"
+        else:
+            ollama_model = "llama3.2"
+        logger.info("Using free local model: ollama/%s (Ollama at %s)", ollama_model, settings.ollama_base_url)
+        from langchain_community.chat_models import ChatOllama
+
+        return ChatOllama(
+            model=ollama_model,
+            base_url=settings.ollama_base_url,
+            temperature=temperature,
+        )
 
     if settings.openai_api_key:
         os.environ.setdefault("OPENAI_API_KEY", settings.openai_api_key)

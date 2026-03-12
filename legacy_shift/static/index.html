@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LegacyShift</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0c0e14;--bg2:#13161f;--bg3:#1a1e2b;--bg4:#232838;
+  --fg:#e2e6f0;--fg2:#9ba3b8;--fg3:#5d657a;
+  --accent:#6c63ff;--accent2:#a78bfa;--accent-glow:rgba(108,99,255,.15);
+  --green:#34d399;--red:#f87171;--yellow:#fbbf24;
+  --border:#2a2f40;--radius:10px;
+}
+html{font-size:15px}
+body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--fg);min-height:100vh;display:flex;flex-direction:column}
+
+/* ── Top bar ─────────────────────────────────────── */
+header{display:flex;align-items:center;gap:1rem;padding:.75rem 1.5rem;border-bottom:1px solid var(--border);background:var(--bg2)}
+.logo{font-weight:700;font-size:1.25rem;letter-spacing:-.03em;background:linear-gradient(135deg,var(--accent),var(--accent2));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.logo span{font-weight:400;-webkit-text-fill-color:var(--fg2);margin-left:.15em;font-size:.85rem}
+header .spacer{flex:1}
+.badge{font-size:.7rem;padding:.2em .55em;border-radius:4px;background:var(--accent-glow);color:var(--accent2);font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+
+/* ── Layout ──────────────────────────────────────── */
+.app{display:grid;grid-template-columns:1fr 1fr;flex:1;overflow:hidden}
+@media(max-width:900px){.app{grid-template-columns:1fr;grid-template-rows:1fr 1fr}}
+
+/* ── Panels ──────────────────────────────────────── */
+.panel{display:flex;flex-direction:column;overflow:hidden}
+.panel-header{display:flex;align-items:center;gap:.75rem;padding:.65rem 1.25rem;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0}
+.panel-title{font-weight:600;font-size:.85rem;color:var(--fg2);text-transform:uppercase;letter-spacing:.06em}
+.panel-body{flex:1;overflow:auto;position:relative}
+
+.left-panel{border-right:1px solid var(--border)}
+
+/* ── Code input ──────────────────────────────────── */
+textarea#code-input{
+  width:100%;height:100%;resize:none;border:none;outline:none;padding:1rem 1.25rem;
+  font-family:'JetBrains Mono',monospace;font-size:.85rem;line-height:1.65;tab-size:4;
+  background:var(--bg);color:var(--fg);
+}
+textarea#code-input::placeholder{color:var(--fg3)}
+
+/* ── Action bar ──────────────────────────────────── */
+.action-bar{display:flex;gap:.5rem;padding:.6rem 1.25rem;border-top:1px solid var(--border);background:var(--bg2);flex-shrink:0;flex-wrap:wrap}
+.btn{
+  display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border:none;border-radius:6px;
+  font-family:inherit;font-size:.8rem;font-weight:600;cursor:pointer;transition:all .15s;
+}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:#574eee;transform:translateY(-1px)}
+.btn-secondary{background:var(--bg4);color:var(--fg2);border:1px solid var(--border)}
+.btn-secondary:hover{border-color:var(--fg3);color:var(--fg)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none!important}
+.btn svg{width:16px;height:16px}
+
+/* ── Tabs ────────────────────────────────────────── */
+.tabs{display:flex;gap:0;flex-shrink:0;border-bottom:1px solid var(--border);background:var(--bg2)}
+.tab{
+  padding:.6rem 1.1rem;font-size:.78rem;font-weight:600;color:var(--fg3);cursor:pointer;
+  border-bottom:2px solid transparent;transition:all .15s;user-select:none;
+}
+.tab:hover{color:var(--fg2)}
+.tab.active{color:var(--accent2);border-bottom-color:var(--accent)}
+
+/* ── Result content ──────────────────────────────── */
+.result-pane{display:none;padding:1.25rem;overflow:auto;height:100%}
+.result-pane.active{display:block}
+.result-pane pre{
+  font-family:'JetBrains Mono',monospace;font-size:.82rem;line-height:1.7;white-space:pre-wrap;
+  word-wrap:break-word;color:var(--fg);
+}
+.result-pane .label{font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--fg3);margin-bottom:.5rem}
+.result-pane .code-block{
+  background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);
+  padding:1rem;margin-bottom:1rem;overflow-x:auto;
+}
+.result-pane .code-block pre{white-space:pre;word-wrap:normal}
+.result-pane .prose{line-height:1.75;color:var(--fg);font-size:.88rem}
+
+/* ── Status chips ────────────────────────────────── */
+.status{display:inline-flex;align-items:center;gap:.35rem;font-size:.75rem;font-weight:600;padding:.25rem .65rem;border-radius:20px;margin-bottom:.75rem}
+.status.success{background:rgba(52,211,153,.12);color:var(--green)}
+.status.partial{background:rgba(251,191,36,.12);color:var(--yellow)}
+.status.failed{background:rgba(248,113,113,.12);color:var(--red)}
+
+/* ── Loader ──────────────────────────────────────── */
+.loader-overlay{
+  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
+  background:rgba(12,14,20,.85);z-index:10;flex-direction:column;gap:1rem;
+}
+.loader-overlay.active{display:flex}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loader-text{font-size:.82rem;color:var(--fg2);animation:pulse 1.5s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── Empty state ─────────────────────────────────── */
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--fg3);gap:.5rem;text-align:center;padding:2rem}
+.empty-state svg{width:48px;height:48px;opacity:.3}
+.empty-state p{font-size:.85rem}
+
+/* ── Parse info grid ─────────────────────────────── */
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-bottom:1rem}
+.info-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:.85rem 1rem}
+.info-card .val{font-size:1.4rem;font-weight:700;color:var(--accent2)}
+.info-card .lbl{font-size:.7rem;color:var(--fg3);text-transform:uppercase;letter-spacing:.06em;margin-top:.15rem}
+
+/* ── Scrollbar ───────────────────────────────────── */
+::-webkit-scrollbar{width:6px;height:6px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+::-webkit-scrollbar-thumb:hover{background:var(--fg3)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">LegacyShift <span>v0.1</span></div>
+  <div class="spacer"></div>
+  <div class="badge">AI Migration</div>
+</header>
+
+<div class="app">
+  <!-- ── Left: Code Input ──────────────────────── -->
+  <div class="panel left-panel">
+    <div class="panel-header">
+      <div class="panel-title">Java Source</div>
+      <div class="spacer" style="flex:1"></div>
+      <button class="btn btn-secondary" onclick="loadExample()" title="Load example">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6"/><path d="M9 15h6"/></svg>
+        Example
+      </button>
+    </div>
+    <div class="panel-body">
+      <textarea id="code-input" placeholder="Paste your Java code here..." spellcheck="false"></textarea>
+    </div>
+    <div class="action-bar">
+      <button class="btn btn-secondary" onclick="runParse()" id="btn-parse">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+        Parse
+      </button>
+      <button class="btn btn-secondary" onclick="runExplain()" id="btn-explain">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        Explain
+      </button>
+      <button class="btn btn-primary" onclick="runMigrate()" id="btn-migrate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+        Full Migration
+      </button>
+    </div>
+  </div>
+
+  <!-- ── Right: Results ────────────────────────── -->
+  <div class="panel right-panel">
+    <div class="tabs" id="tabs">
+      <div class="tab active" data-tab="parse" onclick="switchTab('parse')">Parse</div>
+      <div class="tab" data-tab="explain" onclick="switchTab('explain')">Explain</div>
+      <div class="tab" data-tab="tests" onclick="switchTab('tests')">Tests</div>
+      <div class="tab" data-tab="translated" onclick="switchTab('translated')">Translated</div>
+    </div>
+    <div class="panel-body" style="position:relative">
+      <div class="loader-overlay" id="loader">
+        <div class="spinner"></div>
+        <div class="loader-text" id="loader-text">Processing...</div>
+      </div>
+
+      <!-- Parse tab -->
+      <div class="result-pane active" id="pane-parse">
+        <div class="empty-state" id="parse-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M16 18l6-6-6-6"/><path d="M8 6l-6 6 6 6"/></svg>
+          <p>Paste Java code and click <strong>Parse</strong> to see its structure.</p>
+        </div>
+        <div id="parse-result" style="display:none"></div>
+      </div>
+
+      <!-- Explain tab -->
+      <div class="result-pane" id="pane-explain">
+        <div class="empty-state" id="explain-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <p>Click <strong>Explain</strong> to get a plain-English breakdown.</p>
+        </div>
+        <div id="explain-result" style="display:none"></div>
+      </div>
+
+      <!-- Tests tab -->
+      <div class="result-pane" id="pane-tests">
+        <div class="empty-state" id="tests-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+          <p>Run <strong>Full Migration</strong> to generate a test suite.</p>
+        </div>
+        <div id="tests-result" style="display:none"></div>
+      </div>
+
+      <!-- Translated tab -->
+      <div class="result-pane" id="pane-translated">
+        <div class="empty-state" id="translated-empty">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+          <p>Run <strong>Full Migration</strong> to get the Python translation.</p>
+        </div>
+        <div id="translated-result" style="display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+
+const EXAMPLE = `package com.legacybank.accounts;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
+/**
+ * Core bank account used across the retail banking platform since 2004.
+ * Handles deposits, withdrawals, transfers, and interest accrual.
+ * WARNING: Do not modify without approval from the Risk team.
+ */
+public class BankAccount {
+
+    private String accountId;
+    private String ownerName;
+    private double balance;
+    private double interestRate;
+    private boolean frozen;
+    private List<String> transactionHistory;
+
+    public BankAccount(String accountId, String ownerName, double initialBalance, double interestRate) {
+        if (accountId == null || accountId.trim().isEmpty()) {
+            throw new IllegalArgumentException("Account ID cannot be null or empty");
+        }
+        if (initialBalance < 0) {
+            throw new IllegalArgumentException("Initial balance cannot be negative");
+        }
+        if (interestRate < 0 || interestRate > 1.0) {
+            throw new IllegalArgumentException("Interest rate must be between 0 and 1");
+        }
+        this.accountId = accountId.trim();
+        this.ownerName = ownerName != null ? ownerName.trim() : "Unknown";
+        this.balance = initialBalance;
+        this.interestRate = interestRate;
+        this.frozen = false;
+        this.transactionHistory = new ArrayList<>();
+        this.transactionHistory.add("OPEN:" + initialBalance);
+    }
+
+    public void deposit(double amount) {
+        if (frozen) throw new IllegalStateException("Cannot deposit to a frozen account");
+        if (amount <= 0) throw new IllegalArgumentException("Deposit amount must be positive");
+        balance += amount;
+        transactionHistory.add("DEP:" + amount);
+    }
+
+    public void withdraw(double amount) {
+        if (frozen) throw new IllegalStateException("Cannot withdraw from a frozen account");
+        if (amount <= 0) throw new IllegalArgumentException("Withdrawal amount must be positive");
+        if (amount > balance) throw new IllegalArgumentException("Insufficient funds");
+        balance -= amount;
+        transactionHistory.add("WDR:" + amount);
+    }
+
+    public double applyInterest() {
+        if (frozen || balance <= 0) return 0.0;
+        double interest = Math.round(balance * interestRate * 100.0) / 100.0;
+        balance += interest;
+        transactionHistory.add("INT:" + interest);
+        return interest;
+    }
+
+    public void freeze()   { frozen = true;  transactionHistory.add("FREEZE"); }
+    public void unfreeze() { frozen = false; transactionHistory.add("UNFREEZE"); }
+
+    public String getSummary() {
+        return String.format("[%s] %s | Balance: %.2f | Frozen: %s | Txns: %d",
+                accountId, ownerName, balance, frozen ? "YES" : "NO",
+                transactionHistory.size());
+    }
+}`;
+
+function loadExample() {
+  document.getElementById('code-input').value = EXAMPLE;
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
+  document.querySelectorAll('.result-pane').forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+}
+
+function showLoader(text) {
+  const el = document.getElementById('loader');
+  document.getElementById('loader-text').textContent = text || 'Processing...';
+  el.classList.add('active');
+}
+function hideLoader() { document.getElementById('loader').classList.remove('active'); }
+
+function setButtons(disabled) {
+  ['btn-parse','btn-explain','btn-migrate'].forEach(id => document.getElementById(id).disabled = disabled);
+}
+
+function getCode() {
+  const code = document.getElementById('code-input').value.trim();
+  if (!code) { alert('Please paste some Java code first.'); return null; }
+  return code;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+async function runParse() {
+  const code = getCode(); if (!code) return;
+  switchTab('parse');
+  showLoader('Parsing...');
+  setButtons(true);
+  try {
+    const res = await fetch(API + '/parse', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ source_code: code })
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const d = await res.json();
+    document.getElementById('parse-empty').style.display = 'none';
+    const el = document.getElementById('parse-result');
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="info-grid">
+        <div class="info-card"><div class="val">${d.class_count}</div><div class="lbl">Classes</div></div>
+        <div class="info-card"><div class="val">${d.method_count}</div><div class="lbl">Methods</div></div>
+        <div class="info-card"><div class="val">${d.imports.length}</div><div class="lbl">Imports</div></div>
+        <div class="info-card"><div class="val">${d.package || 'none'}</div><div class="lbl">Package</div></div>
+      </div>
+      <div class="label">Structural Summary</div>
+      <div class="code-block"><pre>${escapeHtml(d.summary)}</pre></div>
+    `;
+  } catch (e) {
+    alert('Parse failed: ' + e.message);
+  } finally { hideLoader(); setButtons(false); }
+}
+
+async function runExplain() {
+  const code = getCode(); if (!code) return;
+  switchTab('explain');
+  showLoader('Explaining code (LLM)...');
+  setButtons(true);
+  try {
+    const res = await fetch(API + '/explain', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ source_code: code })
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const d = await res.json();
+    document.getElementById('explain-empty').style.display = 'none';
+    const el = document.getElementById('explain-result');
+    el.style.display = 'block';
+    el.innerHTML = `
+      <div class="label">Plain-English Explanation</div>
+      <div class="prose">${formatMarkdown(d.explanation)}</div>
+    `;
+  } catch (e) {
+    alert('Explain failed: ' + e.message);
+  } finally { hideLoader(); setButtons(false); }
+}
+
+async function runMigrate() {
+  const code = getCode(); if (!code) return;
+  switchTab('translated');
+  showLoader('Running full migration pipeline...');
+  setButtons(true);
+  try {
+    const res = await fetch(API + '/migrate', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ source_code: code, max_retries: 3 })
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+    const d = await res.json();
+
+    const statusCls = d.status === 'success' ? 'success' : d.status === 'partial' ? 'partial' : 'failed';
+    const statusIcon = d.test_passed ? '&#10003;' : '&#10007;';
+
+    // Explain tab
+    document.getElementById('explain-empty').style.display = 'none';
+    const explEl = document.getElementById('explain-result');
+    explEl.style.display = 'block';
+    explEl.innerHTML = `<div class="label">Explanation</div><div class="prose">${formatMarkdown(d.explanation)}</div>`;
+
+    // Tests tab
+    document.getElementById('tests-empty').style.display = 'none';
+    const testsEl = document.getElementById('tests-result');
+    testsEl.style.display = 'block';
+    testsEl.innerHTML = `
+      <div class="status ${statusCls}">${statusIcon} Tests ${d.test_passed ? 'Passed' : 'Failed'} &middot; ${d.iterations} iteration${d.iterations !== 1 ? 's' : ''}</div>
+      <div class="label">Generated Test Suite</div>
+      <div class="code-block"><pre>${escapeHtml(d.test_code)}</pre></div>
+      ${d.test_errors ? `<div class="label">Test Output</div><div class="code-block"><pre>${escapeHtml(d.test_errors)}</pre></div>` : ''}
+    `;
+
+    // Translated tab
+    document.getElementById('translated-empty').style.display = 'none';
+    const transEl = document.getElementById('translated-result');
+    transEl.style.display = 'block';
+    transEl.innerHTML = `
+      <div class="status ${statusCls}">${statusIcon} ${d.status.charAt(0).toUpperCase() + d.status.slice(1)}</div>
+      <div class="label">Python Translation</div>
+      <div class="code-block"><pre>${escapeHtml(d.translated_code)}</pre></div>
+    `;
+
+    switchTab('translated');
+  } catch (e) {
+    alert('Migration failed: ' + e.message);
+  } finally { hideLoader(); setButtons(false); }
+}
+
+function formatMarkdown(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+  html = html.replace(/^### (.+)$/gm, '<h4 style="margin:1rem 0 .4rem;color:var(--accent2)">$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3 style="margin:1.2rem 0 .5rem;color:var(--accent2)">$1</h3>');
+  html = html.replace(/^# (.+)$/gm, '<h2 style="margin:1.4rem 0 .5rem;color:var(--accent2)">$1</h2>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/`([^`]+)`/g, '<code style="background:var(--bg3);padding:.1em .35em;border-radius:3px;font-family:JetBrains Mono,monospace;font-size:.85em">$1</code>');
+  html = html.replace(/\n/g, '<br/>');
+  return html;
+}
+
+// Load example on first visit
+loadExample();
+</script>
+</body>
+</html>
